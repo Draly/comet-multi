@@ -102,6 +102,10 @@ def rank_worker(
     if hasattr(rtn_settings, 'languages') and hasattr(rtn_settings.languages, 'required'):
         required_languages = rtn_settings.languages.required or []
     
+    # Debug counters
+    excluded_by_language = 0
+    included_count = 0
+    
     for info_hash, torrent in torrents.items():
         if cached_only and debrid_service != "torrent" and not torrent["cached"]:
             continue
@@ -116,7 +120,15 @@ def rank_worker(
         if required_languages:
             torrent_languages = parsed.languages if hasattr(parsed, 'languages') else []
             if not check_required_languages(torrent_languages, required_languages):
+                excluded_by_language += 1
+                # Log first few excluded torrents for debugging
+                if excluded_by_language <= 3:
+                    print(f"[LANG_FILTER] Excluded: '{raw_title}' - detected langs: {torrent_languages}, required: {required_languages}")
                 continue
+            else:
+                included_count += 1
+                if included_count <= 3:
+                    print(f"[LANG_FILTER] Included: '{raw_title}' - detected langs: {torrent_languages}")
 
         is_fetchable, failed_keys = check_fetch(parsed, rtn_settings)
         rank = get_rank(parsed, rtn_settings, rtn_ranking)
