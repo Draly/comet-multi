@@ -410,38 +410,37 @@
     </div>
 
     {% set default_debrid_service = 'realdebrid' if disableTorrentStreams else 'torrent' %}
+    
+    <!-- Multi-Debrid Services Section -->
     <div class="form-item">
-      <sl-select
-        id="debridService"
-        value="{{ default_debrid_service }}"
-        data-default-service="{{ default_debrid_service }}"
-        data-disable-torrent="{{ 'true' if disableTorrentStreams else 'false' }}"
-        label="Debrid Service"
-        placeholder="Select debrid service"
-      >
+      <label style="margin-bottom: 12px;">Debrid Services (select one or more)</label>
+      <div id="debridServicesContainer" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;"
+           data-disable-torrent="{{ 'true' if disableTorrentStreams else 'false' }}">
         {% if not disableTorrentStreams %}
-        <sl-option value="torrent">Torrent</sl-option>
+        <sl-checkbox id="check_torrent" data-service="torrent">Torrent (No Debrid)</sl-checkbox>
         {% endif %}
-        <sl-option value="torbox">TorBox</sl-option>
-        <sl-option value="realdebrid">Real-Debrid</sl-option>
-        <sl-option value="alldebrid">All-Debrid</sl-option>
-        <sl-option value="debridlink">Debrid-Link</sl-option>
-        <sl-option value="premiumize">Premiumize</sl-option>
-        <sl-option value="debrider">Debrider</sl-option>
-        <sl-option value="easydebrid">EasyDebrid</sl-option>
-        <sl-option value="offcloud">Offcloud</sl-option>
-        <sl-option value="pikpak">PikPak</sl-option>
-      </sl-select>
+        <sl-checkbox id="check_realdebrid" data-service="realdebrid">Real-Debrid</sl-checkbox>
+        <sl-checkbox id="check_alldebrid" data-service="alldebrid">All-Debrid</sl-checkbox>
+        <sl-checkbox id="check_torbox" data-service="torbox">TorBox</sl-checkbox>
+        <sl-checkbox id="check_debridlink" data-service="debridlink">Debrid-Link</sl-checkbox>
+        <sl-checkbox id="check_premiumize" data-service="premiumize">Premiumize</sl-checkbox>
+        <sl-checkbox id="check_debrider" data-service="debrider">Debrider</sl-checkbox>
+        <sl-checkbox id="check_easydebrid" data-service="easydebrid">EasyDebrid</sl-checkbox>
+        <sl-checkbox id="check_offcloud" data-service="offcloud">Offcloud</sl-checkbox>
+        <sl-checkbox id="check_pikpak" data-service="pikpak">PikPak</sl-checkbox>
+      </div>
     </div>
 
-    <div class="form-item">
-      <label for="debridService">
-        Debrid API Key
-        <a id="referralLink" href="" target="_blank"></a>
-        <a id="apiKeyLink" href="" target="_blank"></a>
-      </label>
-      <sl-input id="debridApiKey" placeholder="Enter API key"></sl-input>
+    <!-- Dynamic API Key Fields Container -->
+    <div id="debridApiKeysContainer">
+      <!-- API key fields will be dynamically generated here -->
     </div>
+
+    <!-- Hidden legacy fields for backward compatibility -->
+    <input type="hidden" id="debridService" value="{{ default_debrid_service }}" 
+           data-default-service="{{ default_debrid_service }}"
+           data-disable-torrent="{{ 'true' if disableTorrentStreams else 'false' }}">
+    <input type="hidden" id="debridApiKey" value="">
 
     <sl-details summary="Advanced Settings">
       <div class="form-item">
@@ -466,95 +465,130 @@
     </sl-details>
 
     <script>
-      const debridServiceElement = document.getElementById("debridService");
-      const torrentDisabled = debridServiceElement.dataset.disableTorrent === "true";
-      const defaultDebridService = debridServiceElement.dataset.defaultService;
+      // Multi-debrid configuration
+      const debridServicesContainer = document.getElementById("debridServicesContainer");
+      const torrentDisabled = debridServicesContainer.dataset.disableTorrent === "true";
       window.disableTorrentStreams = torrentDisabled;
-      window.defaultDebridService = defaultDebridService;
+      window.defaultDebridService = torrentDisabled ? "realdebrid" : "torrent";
 
-      debridServiceElement.addEventListener("sl-change", function (event) {
-          const selectedService = event.target.value;
-          const apiKeyLink = document.getElementById("apiKeyLink");
-          const apiKeyInput = document.getElementById("debridApiKey");
+      // Service metadata for API key links
+      const serviceMetadata = {
+        realdebrid: {
+          name: "Real-Debrid",
+          apiKeyUrl: "https://real-debrid.com/apitoken",
+          referralUrl: "http://real-debrid.com/?id=16161532",
+          helpText: "Format: `api-key`"
+        },
+        alldebrid: {
+          name: "All-Debrid",
+          apiKeyUrl: "https://alldebrid.com/apikeys",
+          helpText: "Format: `api-key`"
+        },
+        torbox: {
+          name: "TorBox",
+          apiKeyUrl: "https://torbox.app/settings",
+          referralUrl: "https://torbox.app/subscription?referral=1ffb2238-1c5f-402e-a2ce-3d7a86c52d02",
+          helpText: "Format: `api-key`"
+        },
+        debridlink: {
+          name: "Debrid-Link",
+          apiKeyUrl: "https://debrid-link.com/webapp/apikey",
+          referralUrl: "https://debrid-link.fr/id/G7mli",
+          helpText: "Format: `api-key`"
+        },
+        premiumize: {
+          name: "Premiumize",
+          apiKeyUrl: "https://premiumize.me/account",
+          helpText: "Format: `api-key`"
+        },
+        debrider: {
+          name: "Debrider",
+          apiKeyUrl: "https://debrider.app/dashboard/account",
+          helpText: "Format: `api-key`"
+        },
+        easydebrid: {
+          name: "EasyDebrid",
+          apiKeyUrl: "https://paradise-cloud.com/products/easydebrid",
+          helpText: "Format: `api-key`"
+        },
+        offcloud: {
+          name: "Offcloud",
+          apiKeyUrl: "https://offcloud.com",
+          helpText: "Format: `email:password`"
+        },
+        pikpak: {
+          name: "PikPak",
+          apiKeyUrl: "https://mypikpak.com",
+          helpText: "Format: `email:password`"
+        }
+      };
 
-          const referralLink = document.getElementById("referralLink");
-
-          // Reset links
-          apiKeyLink.href = "";
-          apiKeyLink.textContent = "";
-          apiKeyLink.style.display = "none";
-
-          referralLink.href = "";
-          referralLink.textContent = "";
-          referralLink.style.display = "none";
-
-          if (selectedService === "realdebrid") {
-            apiKeyLink.href = "https://real-debrid.com/apitoken";
-            apiKeyLink.textContent = "Get it here";
-            apiKeyLink.style.display = "inline-block";
-
-            referralLink.href = "http://real-debrid.com/?id=16161532";
-            referralLink.textContent = "Sign up here";
-            referralLink.style.display = "inline-block";
-          } else if (selectedService === "alldebrid") {
-            apiKeyLink.href = "https://alldebrid.com/apikeys";
-            apiKeyLink.textContent = "Get it here";
-            apiKeyLink.style.display = "inline-block";
-          } else if (selectedService === "premiumize") {
-            apiKeyLink.href = "https://premiumize.me/account";
-            apiKeyLink.textContent = "Get it here";
-            apiKeyLink.style.display = "inline-block";
-          } else if (selectedService === "torbox") {
-            apiKeyLink.href = "https://torbox.app/settings";
-            apiKeyLink.textContent = "Get it here";
-            apiKeyLink.style.display = "inline-block";
-
-            referralLink.href = "https://torbox.app/subscription?referral=1ffb2238-1c5f-402e-a2ce-3d7a86c52d02";
-            referralLink.textContent = "Sign up here";
-            referralLink.style.display = "inline-block";
-          } else if (selectedService === "debrider") {
-            apiKeyLink.href = "https://debrider.app/dashboard/account";
-            apiKeyLink.textContent = "Get it here";
-            apiKeyLink.style.display = "inline-block";
-          } else if (selectedService === "easydebrid") {
-            apiKeyLink.href = "https://paradise-cloud.com/products/easydebrid";
-            apiKeyLink.textContent = "Get it here";
-            apiKeyLink.style.display = "inline-block";
-          } else if (selectedService === "debridlink") {
-            apiKeyLink.href = "https://debrid-link.com/webapp/apikey";
-            apiKeyLink.textContent = "Get it here";
-            apiKeyLink.style.display = "inline-block";
-
-            referralLink.href = "https://debrid-link.fr/id/G7mli";
-            referralLink.textContent = "Sign up here";
-            referralLink.style.display = "inline-block";
-          } else if (selectedService === "offcloud") {
-            apiKeyLink.href = "https://offcloud.com";
-            apiKeyLink.textContent = "Get it here";
-            apiKeyLink.style.display = "inline-block";
-          } else if (selectedService === "pikpak") {
-            apiKeyLink.href = "https://mypikpak.com";
-            apiKeyLink.textContent = "Get it here";
-            apiKeyLink.style.display = "inline-block";
-          }
-
-          if (
-            selectedService === "offcloud" ||
-            selectedService === "pikpak"
-          ) {
-            apiKeyInput.helpText = "Format: `email:password`";
-          } else if (!torrentDisabled && selectedService === "torrent") {
-            apiKeyInput.helpText = "";
-          } else {
-            apiKeyInput.helpText = "Format: `api-key`";
-          }
-
-          if (!torrentDisabled && selectedService === "torrent") {
-            apiKeyInput.disabled = true;
-          } else {
-            apiKeyInput.disabled = false;
+      function updateApiKeyFields() {
+        const container = document.getElementById("debridApiKeysContainer");
+        const checkboxes = document.querySelectorAll("#debridServicesContainer sl-checkbox");
+        
+        // Get currently entered values to preserve them
+        const currentValues = {};
+        container.querySelectorAll("sl-input").forEach(input => {
+          const service = input.dataset.service;
+          if (service) {
+            currentValues[service] = input.value;
           }
         });
+        
+        container.innerHTML = "";
+        
+        checkboxes.forEach(checkbox => {
+          const service = checkbox.dataset.service;
+          if (checkbox.checked && service !== "torrent") {
+            const meta = serviceMetadata[service] || { name: service, helpText: "Format: `api-key`" };
+            
+            const formItem = document.createElement("div");
+            formItem.className = "form-item";
+            formItem.style.marginBottom = "10px";
+            
+            // Create label with links
+            const label = document.createElement("label");
+            label.innerHTML = `${meta.name} API Key `;
+            
+            if (meta.referralUrl) {
+              const referralLink = document.createElement("a");
+              referralLink.href = meta.referralUrl;
+              referralLink.target = "_blank";
+              referralLink.textContent = "Sign up";
+              referralLink.style.cssText = "display: inline-flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); color: white; padding: 4px 10px; border-radius: 12px; text-decoration: none; font-size: 0.7rem; font-weight: 600; margin-left: 8px; border: 1px solid rgba(255, 255, 255, 0.25);";
+              label.appendChild(referralLink);
+            }
+            
+            if (meta.apiKeyUrl) {
+              const apiKeyLink = document.createElement("a");
+              apiKeyLink.href = meta.apiKeyUrl;
+              apiKeyLink.target = "_blank";
+              apiKeyLink.textContent = "Get API Key";
+              apiKeyLink.style.cssText = "display: inline-flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); color: white; padding: 4px 10px; border-radius: 12px; text-decoration: none; font-size: 0.7rem; font-weight: 600; margin-left: 8px; border: 1px solid rgba(255, 255, 255, 0.25);";
+              label.appendChild(apiKeyLink);
+            }
+            
+            formItem.appendChild(label);
+            
+            // Create input
+            const input = document.createElement("sl-input");
+            input.id = `apiKey_${service}`;
+            input.dataset.service = service;
+            input.placeholder = `Enter ${meta.name} API key`;
+            input.helpText = meta.helpText;
+            input.value = currentValues[service] || "";
+            
+            formItem.appendChild(input);
+            container.appendChild(formItem);
+          }
+        });
+      }
+
+      // Attach event listeners to all checkboxes
+      document.querySelectorAll("#debridServicesContainer sl-checkbox").forEach(checkbox => {
+        checkbox.addEventListener("sl-change", updateApiKeyFields);
+      });
     </script>
 
     <div class="centered-item">
@@ -653,9 +687,8 @@
           console.log("Failed to retrieve or parse settings from URL:", error);
         }
 
-        // trigger sl-change event on debridService to set initial state
-        const debridServiceSelect = document.getElementById("debridService");
-        debridServiceSelect.dispatchEvent(new Event("sl-change"));
+        // Initialize API key fields for any pre-checked services
+        updateApiKeyFields();
 
         // Populate language selects
         // populateSelect("languages_required", Object.keys(languagesEmojis));
@@ -762,14 +795,39 @@
           const allowEnglishInLanguages = document.getElementById("allowEnglishInLanguages").checked;
           const removeUnknownLanguages = document.getElementById("removeUnknownLanguages").checked;
           const resultFormat = Array.from(document.getElementById("resultFormat").selectedOptions).map(option => option.value);
-          let debridService = document.getElementById("debridService").value;
-          if (window.disableTorrentStreams && debridService === "torrent") {
-            debridService = window.defaultDebridService;
-          }
-          const debridApiKey = document.getElementById("debridApiKey").value;
           const debridStreamProxyPassword = document.getElementById("debridStreamProxyPassword").value;
 
           const selectedResultFormat = resultFormat.length === defaultResultFormat.length && resultFormat.every((val, index) => val === defaultResultFormat[index]) ? ["all"] : resultFormat;
+
+          // Build debridConfigs array from checked services
+          const debridConfigs = [];
+          const checkboxes = document.querySelectorAll("#debridServicesContainer sl-checkbox");
+          let isTorrentOnly = false;
+          
+          checkboxes.forEach(checkbox => {
+            const service = checkbox.dataset.service;
+            if (checkbox.checked) {
+              if (service === "torrent") {
+                isTorrentOnly = true;
+              } else {
+                const apiKeyInput = document.getElementById(`apiKey_${service}`);
+                const apiKey = apiKeyInput ? apiKeyInput.value : "";
+                if (apiKey) {
+                  debridConfigs.push({ service, apiKey });
+                }
+              }
+            }
+          });
+
+          // For backward compatibility, also set legacy fields
+          let debridService = "torrent";
+          let debridApiKey = "";
+          if (debridConfigs.length > 0) {
+            debridService = debridConfigs[0].service;
+            debridApiKey = debridConfigs[0].apiKey;
+          } else if (isTorrentOnly) {
+            debridService = "torrent";
+          }
 
           return {
             maxResultsPerResolution: parseInt(maxResultsPerResolution),
@@ -780,6 +838,7 @@
             resultFormat: selectedResultFormat,
             debridService: debridService,
             debridApiKey: debridApiKey,
+            debridConfigs: debridConfigs,
             debridStreamProxyPassword: debridStreamProxyPassword,
             languages: {
               // required: languages_required,
@@ -846,17 +905,49 @@
             document.getElementById("maxResultsPerResolution").value = settings.maxResultsPerResolution;
           if (settings.maxSize !== null)
             document.getElementById("maxSize").value = settings.maxSize / 1073741824;
-          if (settings.debridService !== null) {
-            const debridServiceSelect = document.getElementById("debridService");
+          
+          // Handle multi-debrid configs
+          if (settings.debridConfigs && settings.debridConfigs.length > 0) {
+            // New multi-debrid format
+            settings.debridConfigs.forEach(cfg => {
+              const checkbox = document.getElementById(`check_${cfg.service}`);
+              if (checkbox) {
+                checkbox.checked = true;
+              }
+            });
+            // Update API key fields
+            updateApiKeyFields();
+            // Fill in API keys after fields are created
+            setTimeout(() => {
+              settings.debridConfigs.forEach(cfg => {
+                const apiKeyInput = document.getElementById(`apiKey_${cfg.service}`);
+                if (apiKeyInput) {
+                  apiKeyInput.value = cfg.apiKey;
+                }
+              });
+            }, 100);
+          } else if (settings.debridService !== null) {
+            // Legacy single debrid format
             const requestedService = settings.debridService;
-            if (window.disableTorrentStreams && requestedService === "torrent") {
-              debridServiceSelect.value = window.defaultDebridService;
-            } else {
-              debridServiceSelect.value = requestedService;
+            const effectiveService = (window.disableTorrentStreams && requestedService === "torrent") 
+              ? window.defaultDebridService 
+              : requestedService;
+            
+            const checkbox = document.getElementById(`check_${effectiveService}`);
+            if (checkbox) {
+              checkbox.checked = true;
+              updateApiKeyFields();
+              if (settings.debridApiKey && effectiveService !== "torrent") {
+                setTimeout(() => {
+                  const apiKeyInput = document.getElementById(`apiKey_${effectiveService}`);
+                  if (apiKeyInput) {
+                    apiKeyInput.value = settings.debridApiKey;
+                  }
+                }, 100);
+              }
             }
           }
-          if (settings.debridApiKey !== null)
-            document.getElementById("debridApiKey").value = settings.debridApiKey;
+          
           if (settings.debridStreamProxyPassword !== null)
             document.getElementById("debridStreamProxyPassword").value = settings.debridStreamProxyPassword;
           if (settings.resultFormat !== null && settings.resultFormat != "all")

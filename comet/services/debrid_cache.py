@@ -1,4 +1,5 @@
 import time
+from typing import Dict, List
 
 import orjson
 
@@ -185,3 +186,51 @@ async def get_cached_availability(
         results = await database.fetch_all(query, params)
 
     return results
+
+
+async def get_cached_availability_multi(
+    debrid_services: List[str], 
+    info_hashes: list, 
+    season: int = None, 
+    episode: int = None
+) -> Dict[str, List]:
+    """
+    Get cached availability across multiple debrid services.
+    
+    Args:
+        debrid_services: List of debrid service names to check
+        info_hashes: List of torrent info hashes to check
+        season: Season number (optional)
+        episode: Episode number (optional)
+    
+    Returns:
+        Dict mapping service name to list of availability results
+    """
+    results = {}
+    for service in debrid_services:
+        service_results = await get_cached_availability(service, info_hashes, season, episode)
+        results[service] = list(service_results)
+    return results
+
+
+def get_cached_services_for_hash(
+    multi_results: Dict[str, List], 
+    info_hash: str
+) -> List[str]:
+    """
+    Get list of services where a specific hash is cached.
+    
+    Args:
+        multi_results: Result from get_cached_availability_multi
+        info_hash: The info hash to check
+    
+    Returns:
+        List of service names where the hash is cached
+    """
+    services = []
+    for service, results in multi_results.items():
+        for result in results:
+            if result["info_hash"] == info_hash:
+                services.append(service)
+                break
+    return services

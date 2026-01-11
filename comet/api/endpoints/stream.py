@@ -13,8 +13,9 @@ from comet.debrid.manager import get_debrid_extension
 from comet.metadata.filter import release_filter
 from comet.metadata.manager import MetadataScraper
 from comet.services.anime import anime_mapper
-from comet.services.debrid import DebridService
+from comet.services.debrid import DebridService, MultiDebridService
 from comet.services.lock import DistributedLock, is_scrape_in_progress
+from comet.core.models import DebridConfig
 from comet.services.orchestration import TorrentManager
 from comet.utils.cache import (CachedJSONResponse, CachePolicies,
                                check_etag_match, generate_etag,
@@ -89,8 +90,16 @@ async def is_first_search(media_id: str):
 
 
 async def background_scrape(
-    torrent_manager: TorrentManager, media_id: str, debrid_service: str
+    torrent_manager: TorrentManager, media_id: str, debrid_configs: list
 ):
+    """
+    Background scrape with multi-debrid support.
+    
+    Args:
+        torrent_manager: TorrentManager instance
+        media_id: Media ID string
+        debrid_configs: List of DebridConfig objects or legacy debrid_service string
+    """
     scrape_lock = DistributedLock(media_id)
     lock_acquired = await scrape_lock.acquire()
 
@@ -105,21 +114,35 @@ async def background_scrape(
         async with aiohttp.ClientSession() as session:
             await torrent_manager.scrape_torrents()
 
-            if debrid_service != "torrent" and len(torrent_manager.torrents) > 0:
+            # Handle both new multi-debrid and legacy single debrid
+            if isinstance(debrid_configs, list) and len(debrid_configs) > 0:
+                # Multi-debrid mode
+                multi_debrid = MultiDebridService(debrid_configs, torrent_manager.ip)
+                if len(torrent_manager.torrents) > 0:
+                    await multi_debrid.get_and_cache_availability_all(
+                        session,
+                        torrent_manager.torrents,
+                        torrent_manager.media_id,
+                        torrent_manager.media_only_id,
+                        torrent_manager.season,
+                        torrent_manager.episode,
+                    )
+            elif isinstance(debrid_configs, str) and debrid_configs != "torrent":
+                # Legacy single debrid mode (backward compatibility)
                 debrid_service_instance = DebridService(
-                    debrid_service,
+                    debrid_configs,
                     torrent_manager.debrid_api_key,
                     torrent_manager.ip,
                 )
-
-                await debrid_service_instance.get_and_cache_availability(
-                    session,
-                    torrent_manager.torrents,
-                    torrent_manager.media_id,
-                    torrent_manager.media_only_id,
-                    torrent_manager.season,
-                    torrent_manager.episode,
-                )
+                if len(torrent_manager.torrents) > 0:
+                    await debrid_service_instance.get_and_cache_availability(
+                        session,
+                        torrent_manager.torrents,
+                        torrent_manager.media_id,
+                        torrent_manager.media_only_id,
+                        torrent_manager.season,
+                        torrent_manager.episode,
+                    )
 
             logger.log(
                 "SCRAPER",
@@ -200,7 +223,30 @@ async def stream(
         }
         return error_response
 
-    is_torrent = config["debridService"] == "torrent"
+    # Get debrid configurations (multi-debrid or legacy single)
+    debrid_configs = config.get("debridConfigs", [])
+    if debrid_configs:
+        # Parse debrid configs if they are dicts
+        parsed_configs = []
+        for cfg in debrid_configs:
+            if isinstance(cfg, dict):
+                parsed_configs.append(DebridConfig(**cfg))
+            elif isinstance(cfg, DebridConfig):
+                parsed_configs.append(cfg)
+        debrid_configs = parsed_configs
+
+    # Determine if torrent-only mode
+    is_torrent = (
+        (not debrid_configs or len(debrid_configs) == 0)
+        and config["debridService"] == "torrent"
+    ) or (
+        len(debrid_configs) == 1 and debrid_configs[0].service == "torrent"
+    )
+
+    # Legacy fallback: if no debridConfigs but debridService is set
+    if not debrid_configs and config["debridService"] != "torrent" and config.get("debridApiKey"):
+        debrid_configs = [DebridConfig(service=config["debridService"], apiKey=config["debridApiKey"])]
+
     if settings.DISABLE_TORRENT_STREAMS and is_torrent:
         placeholder_stream = {
             "name": settings.TORRENT_DISABLED_STREAM_NAME,
@@ -359,13 +405,12 @@ async def stream(
 
         media_only_id = id
 
+        # Create multi-debrid service instance
+        client_ip = get_client_ip(request)
+        multi_debrid_service = MultiDebridService(debrid_configs, client_ip) if debrid_configs else None
+        
+        # Keep legacy debrid_service for backward compatibility in some places
         debrid_service = config["debridService"]
-
-        debrid_service_instance = DebridService(
-            config["debridService"],
-            config["debridApiKey"],
-            get_client_ip(request),
-        )
 
         is_kitsu = media_id.startswith("kitsu:")
         search_episode = episode
@@ -389,10 +434,14 @@ async def stream(
                         f"📺 Multi-part anime detected (kitsu:{id}): searching for S{search_season:02d}E{search_episode:02d} instead of S{season:02d}E{episode:02d}",
                     )
 
+        # For TorrentManager, use first debrid service or "torrent"
+        first_debrid_service = debrid_configs[0].service if debrid_configs else "torrent"
+        first_debrid_api_key = debrid_configs[0].apiKey if debrid_configs else ""
+
         torrent_manager = TorrentManager(
-            debrid_service,
-            config["debridApiKey"],
-            get_client_ip(request),
+            first_debrid_service,
+            first_debrid_api_key,
+            client_ip,
             media_type,
             media_id,
             media_only_id,
@@ -480,7 +529,7 @@ async def stream(
                 )
 
             background_tasks.add_task(
-                background_scrape, torrent_manager, media_id, debrid_service
+                background_scrape, torrent_manager, media_id, debrid_configs
             )
 
         # Perform scraping if lock acquired and needed
@@ -499,11 +548,14 @@ async def stream(
             await scrape_lock.release()
             lock_acquired = False
 
-        await debrid_service_instance.check_existing_availability(
-            torrent_manager.torrents, season, episode
-        )
+        # Check existing availability across all configured debrid services
+        if multi_debrid_service and not is_torrent:
+            await multi_debrid_service.check_existing_availability_all(
+                torrent_manager.torrents, season, episode
+            )
+        
         cached_count = sum(
-            1 for torrent in torrent_manager.torrents.values() if torrent["cached"]
+            1 for torrent in torrent_manager.torrents.values() if torrent.get("cached")
         )
         total_count = len(torrent_manager.torrents)
 
@@ -514,11 +566,12 @@ async def stream(
                 or (cached_count / total_count) < settings.DEBRID_CACHE_CHECK_RATIO
             )
             and total_count > 0
-            and debrid_service != "torrent"
+            and not is_torrent
+            and multi_debrid_service
         ):
-            logger.log("SCRAPER", "🔄 Checking availability on debrid service...")
+            logger.log("SCRAPER", "🔄 Checking availability on debrid services...")
             try:
-                await debrid_service_instance.get_and_cache_availability(
+                await multi_debrid_service.get_and_cache_availability_all(
                     session,
                     torrent_manager.torrents,
                     media_id,
@@ -537,14 +590,15 @@ async def stream(
                     ]
                 }
 
-        if debrid_service != "torrent":
+        if not is_torrent:
             cached_count = sum(
-                1 for torrent in torrent_manager.torrents.values() if torrent["cached"]
+                1 for torrent in torrent_manager.torrents.values() if torrent.get("cached")
             )
 
+            service_names = multi_debrid_service.get_service_names() if multi_debrid_service else [debrid_service]
             logger.log(
                 "SCRAPER",
-                f"💾 Available cached torrents on {debrid_service}: {cached_count}/{len(torrent_manager.torrents)}",
+                f"💾 Available cached torrents on {', '.join(service_names)}: {cached_count}/{len(torrent_manager.torrents)}",
             )
 
         initial_torrent_count = len(torrent_manager.torrents)
@@ -561,8 +615,6 @@ async def stream(
             "SCRAPER",
             f"⚖️  Torrents after user RTN filtering: {len(torrent_manager.ranked_torrents)}/{initial_torrent_count}",
         )
-
-        debrid_extension = get_debrid_extension(debrid_service)
 
         if (
             config["debridStreamProxyPassword"] != ""
@@ -591,7 +643,13 @@ async def stream(
             torrent = torrents[info_hash]
             rtn_data = torrent["parsed"]
 
-            debrid_emoji = "🧲" if is_torrent else ("⚡" if torrent["cached"] else "⬇️")
+            debrid_emoji = "🧲" if is_torrent else ("⚡" if torrent.get("cached") else "⬇️")
+
+            # Get debrid extension for display (multi-debrid aware)
+            if multi_debrid_service and not is_torrent:
+                debrid_extension = multi_debrid_service.get_debrid_extension_for_torrent(torrent)
+            else:
+                debrid_extension = get_debrid_extension(debrid_service) if debrid_service != "torrent" else "🧲"
 
             torrent_title = torrent["title"]
             formatted_components = get_formatted_components(
@@ -615,7 +673,7 @@ async def stream(
 
             if chilllink:
                 the_stream["_chilllink"] = format_chilllink(
-                    formatted_components, torrent["cached"]
+                    formatted_components, torrent.get("cached", False)
                 )
 
             if is_torrent:
@@ -629,8 +687,12 @@ async def stream(
                 else:
                     the_stream["sources"] = torrent["sources"]
             else:
+                # Get the first available service for this torrent for playback
+                cached_services = torrent.get("cached_services", [])
+                playback_service = cached_services[0] if cached_services else (debrid_configs[0].service if debrid_configs else debrid_service)
+                
                 the_stream["url"] = (
-                    f"{base_playback_host}/{b64config}/playback/{info_hash}/{torrent['fileIndex'] if torrent['cached'] and torrent['fileIndex'] is not None else 'n'}/{result_season}/{result_episode}/{quote(torrent_title)}?name={quote(title)}"
+                    f"{base_playback_host}/{b64config}/playback/{playback_service}/{info_hash}/{torrent['fileIndex'] if torrent.get('cached') and torrent['fileIndex'] is not None else 'n'}/{result_season}/{result_episode}/{quote(torrent_title)}?name={quote(title)}"
                 )
 
             if sort_mixed:

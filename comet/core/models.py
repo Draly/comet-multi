@@ -682,6 +682,34 @@ rtn_settings_default_dumped = rtn_settings_default.model_dump()
 rtn_ranking_default = DefaultRanking()
 
 
+# List of valid debrid services
+VALID_DEBRID_SERVICES = [
+    "realdebrid",
+    "alldebrid",
+    "premiumize",
+    "torbox",
+    "debrider",
+    "easydebrid",
+    "debridlink",
+    "offcloud",
+    "pikpak",
+    "torrent",
+]
+
+
+class DebridConfig(BaseModel):
+    """Configuration for a single debrid service."""
+
+    service: str
+    apiKey: str
+
+    @field_validator("service")
+    def check_service(cls, v):
+        if v not in VALID_DEBRID_SERVICES:
+            raise ValueError(f"Invalid debrid service: {v}")
+        return v
+
+
 class ConfigModel(BaseModel):
     cachedOnly: Optional[bool] = False
     sortCachedUncachedTogether: Optional[bool] = False
@@ -689,8 +717,11 @@ class ConfigModel(BaseModel):
     resultFormat: Optional[List[str]] = ["all"]
     maxResultsPerResolution: Optional[int] = 0
     maxSize: Optional[float] = 0
+    # Legacy single debrid fields (kept for backward compatibility)
     debridService: Optional[str] = "torrent"
     debridApiKey: Optional[str] = ""
+    # New multi-debrid configuration
+    debridConfigs: Optional[List[DebridConfig]] = []
     debridStreamProxyPassword: Optional[str] = ""
     languages: Optional[dict] = rtn_settings_default_dumped["languages"]
     resolutions: Optional[dict] = rtn_settings_default_dumped["resolutions"]
@@ -718,20 +749,48 @@ class ConfigModel(BaseModel):
 
     @field_validator("debridService")
     def check_debrid_service(cls, v):
-        if v not in [
-            "realdebrid",
-            "alldebrid",
-            "premiumize",
-            "torbox",
-            "debrider",
-            "easydebrid",
-            "debridlink",
-            "offcloud",
-            "pikpak",
-            "torrent",
-        ]:
+        if v not in VALID_DEBRID_SERVICES:
             raise ValueError("Invalid debridService")
         return v
+
+    @field_validator("debridConfigs", mode="before")
+    def parse_debrid_configs(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            result = []
+            for item in v:
+                if isinstance(item, dict):
+                    result.append(DebridConfig(**item))
+                elif isinstance(item, DebridConfig):
+                    result.append(item)
+            return result
+        return v
+
+    def get_debrid_configs(self) -> List[DebridConfig]:
+        """
+        Returns the list of debrid configurations.
+        If debridConfigs is empty but legacy fields are set, converts them.
+        """
+        if self.debridConfigs and len(self.debridConfigs) > 0:
+            return self.debridConfigs
+
+        # Fallback to legacy single debrid config
+        if self.debridService and self.debridService != "torrent" and self.debridApiKey:
+            return [DebridConfig(service=self.debridService, apiKey=self.debridApiKey)]
+
+        # Torrent mode (no debrid)
+        if self.debridService == "torrent":
+            return []
+
+        return []
+
+    def is_torrent_only(self) -> bool:
+        """Check if configuration is torrent-only (no debrid services)."""
+        configs = self.get_debrid_configs()
+        return len(configs) == 0 or (
+            len(configs) == 1 and configs[0].service == "torrent"
+        )
 
 
 default_config = ConfigModel().model_dump()
