@@ -772,10 +772,79 @@
         const copyLinkButton = document.querySelector("#copy-link");
         const copyAlert = document.querySelector('#copyAlert');
 
+        // Map ISO codes to full language names for RTN compatibility
+        const isoToLanguageName = {
+          "multi": "multi",
+          "en": "english",
+          "ja": "japanese",
+          "zh": "chinese",
+          "ru": "russian",
+          "ar": "arabic",
+          "pt": "portuguese",
+          "es": "spanish",
+          "fr": "french",
+          "de": "german",
+          "it": "italian",
+          "ko": "korean",
+          "hi": "hindi",
+          "bn": "bengali",
+          "pa": "punjabi",
+          "mr": "marathi",
+          "gu": "gujarati",
+          "ta": "tamil",
+          "te": "telugu",
+          "kn": "kannada",
+          "ml": "malayalam",
+          "th": "thai",
+          "vi": "vietnamese",
+          "id": "indonesian",
+          "tr": "turkish",
+          "he": "hebrew",
+          "fa": "persian",
+          "uk": "ukrainian",
+          "el": "greek",
+          "lt": "lithuanian",
+          "lv": "latvian",
+          "et": "estonian",
+          "pl": "polish",
+          "cs": "czech",
+          "sk": "slovak",
+          "hu": "hungarian",
+          "ro": "romanian",
+          "bg": "bulgarian",
+          "sr": "serbian",
+          "hr": "croatian",
+          "sl": "slovenian",
+          "nl": "dutch",
+          "da": "danish",
+          "fi": "finnish",
+          "sv": "swedish",
+          "no": "norwegian",
+          "ms": "malay",
+          "la": "latino"
+        };
+
+        function convertToLanguageNames(isoCodes) {
+          return isoCodes.map(code => isoToLanguageName[code] || code);
+        }
+
+        // Reverse mapping: language names to ISO codes
+        const languageNameToIso = Object.fromEntries(
+          Object.entries(isoToLanguageName).map(([k, v]) => [v.toLowerCase(), k])
+        );
+
+        function convertToIsoCodes(languageNames) {
+          return languageNames.map(name => languageNameToIso[name.toLowerCase()] || name);
+        }
+
         function getSettings() {
-          const languages_required = Array.from(document.getElementById("languages_required").selectedOptions).map(option => option.value);
-          const languages_excluded = Array.from(document.getElementById("languages_excluded").selectedOptions).map(option => option.value);
-          const languages_preferred = Array.from(document.getElementById("languages_preferred").selectedOptions).map(option => option.value);
+          const languages_required_iso = Array.from(document.getElementById("languages_required").selectedOptions).map(option => option.value);
+          const languages_excluded_iso = Array.from(document.getElementById("languages_excluded").selectedOptions).map(option => option.value);
+          const languages_preferred_iso = Array.from(document.getElementById("languages_preferred").selectedOptions).map(option => option.value);
+          // Convert ISO codes to full language names for RTN
+          const languages_required = convertToLanguageNames(languages_required_iso);
+          const languages_excluded = convertToLanguageNames(languages_excluded_iso);
+          const languages_preferred = convertToLanguageNames(languages_preferred_iso);
           const selectedResolutions = Array.from(document.getElementById("resolutions").selectedOptions).map(option => option.value);
           const allResolutions = ["r2160p", "r1080p", "r720p", "r480p", "r360p", "unknown"];
           const resolutions = allResolutions.reduce((obj, res) => {
@@ -952,12 +1021,13 @@
           if (settings.resultFormat !== null && settings.resultFormat != "all")
             document.getElementById("resultFormat").value = settings.resultFormat;
           if (settings.languages) {
+            // Convert language names back to ISO codes for the UI
             if (settings.languages.required)
-              document.getElementById("languages_required").value = settings.languages.required;
+              document.getElementById("languages_required").value = convertToIsoCodes(settings.languages.required);
             if (settings.languages.exclude)
-              document.getElementById("languages_excluded").value = settings.languages.exclude;
+              document.getElementById("languages_excluded").value = convertToIsoCodes(settings.languages.exclude);
             if (settings.languages.preferred)
-              document.getElementById("languages_preferred").value = settings.languages.preferred;
+              document.getElementById("languages_preferred").value = convertToIsoCodes(settings.languages.preferred);
           }
           if (settings.resolutions) {
             const allResolutions = ["r2160p", "r1080p", "r720p", "r480p", "r360p", "unknown"];
