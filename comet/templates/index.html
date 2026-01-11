@@ -363,15 +363,14 @@
   </div>
 
   <div class="form-container">
-    <!-- <div class="form-item">
-        <sl-select
-          id="languages_required"
-          multiple
-          clearable
-          label="Required Languages"
-          placeholder="Select required languages"
-        ></sl-select>
-      </div> -->
+    <div class="form-item">
+      <sl-select id="languages_required" multiple clearable label="Required Languages (Include Only)"
+        placeholder="Only show results with these languages">
+      </sl-select>
+      <small style="color: #888; display: block; margin-top: 4px;">
+        If set, only torrents containing at least one of these languages will be shown.
+      </small>
+    </div>
 
     <div class="form-item">
       <sl-select id="languages_preferred" multiple clearable label="Preferred Languages"
@@ -691,7 +690,7 @@
         updateApiKeyFields();
 
         // Populate language selects
-        // populateSelect("languages_required", Object.keys(languagesEmojis));
+        populateSelect("languages_required", Object.keys(languagesEmojis));
         populateSelect("languages_excluded", Object.keys(languagesEmojis));
         populateSelect("languages_preferred", Object.keys(languagesEmojis));
 
@@ -774,7 +773,7 @@
         const copyAlert = document.querySelector('#copyAlert');
 
         function getSettings() {
-          // const languages_required = Array.from(document.getElementById("languages_required").selectedOptions).map(option => option.value);
+          const languages_required = Array.from(document.getElementById("languages_required").selectedOptions).map(option => option.value);
           const languages_excluded = Array.from(document.getElementById("languages_excluded").selectedOptions).map(option => option.value);
           const languages_preferred = Array.from(document.getElementById("languages_preferred").selectedOptions).map(option => option.value);
           const selectedResolutions = Array.from(document.getElementById("resolutions").selectedOptions).map(option => option.value);
@@ -841,7 +840,7 @@
             debridConfigs: debridConfigs,
             debridStreamProxyPassword: debridStreamProxyPassword,
             languages: {
-              // required: languages_required,
+              required: languages_required,
               exclude: languages_excluded,
               preferred: languages_preferred
             },
@@ -953,8 +952,8 @@
           if (settings.resultFormat !== null && settings.resultFormat != "all")
             document.getElementById("resultFormat").value = settings.resultFormat;
           if (settings.languages) {
-            // if (settings.languages.required)
-            //     document.getElementById("languages_required").value = settings.languages.required;
+            if (settings.languages.required)
+              document.getElementById("languages_required").value = settings.languages.required;
             if (settings.languages.exclude)
               document.getElementById("languages_excluded").value = settings.languages.exclude;
             if (settings.languages.preferred)
