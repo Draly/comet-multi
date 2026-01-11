@@ -145,7 +145,6 @@ def rank_worker(
         if required_languages:
             torrent_languages = parsed.languages if hasattr(parsed, 'languages') else []
             if not check_required_languages(torrent_languages, required_languages, raw_title):
-                excluded_by_language += 1
                 continue
 
         is_fetchable, failed_keys = check_fetch(parsed, rtn_settings)
